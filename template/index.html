@@ -1,0 +1,261 @@
+{% load static %}
+{%  include 'header.html' %}
+<div class="content-body">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-xl-4 col-md-4">
+                <div class="mb-3" id="loader" style="min-height: 25px;"></div>
+            </div>
+            <div class="col-xl-3 col-sm-4 col-md-3">
+                <div class="mb-3">
+                    <select id="category" class="form-control combo">
+                        <option value="ALL">ALL</option>
+                        {% for result in category_data %}
+                        <option value="{{result.category}}">{{result.category}}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-xl-2 col-sm-4 col-md-2">
+                <div class="mb-3">
+                    <input
+                        type="date"
+                        class="form-control"
+                        id="from_date"
+                        value="{% now 'Y-m-01' %}"
+                        required
+                    >
+                </div>
+            </div>
+            <div class="col-xl-2 col-sm-4 col-md-2">
+                <div class="mb-3">
+                    <input
+                        type="date"
+                        class="form-control"
+                        id="to_date"
+                        value="{% now 'Y-m-d' %}"
+                        required
+                    >
+                </div>
+            </div>
+            <div class="col-xl-1 col-sm-1 col-md-1">
+                <div class="mb-3">
+                    <button
+                        type="button"
+                        class="form-control"
+                        onclick="return search_date_wise_expense()"
+                        value=""
+                        required
+                    >
+                        <i class="fa fa-search"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="row" id="CategoryWiseChart"></div>
+        <div class="row" id="CategoryWisetable"></div>
+        <div class="row" id="DateWiseChart"></div>
+        <div class="row" id="DateWisetable"></div>
+    </div>
+</div>
+{%  include 'footer.html' %}
+<script type="text/javascript">
+    // page load first time
+    search_date_wise_expense()
+    
+    function search_date_wise_expense() {
+        let category = $("#category").val()
+        let from_date = $("#from_date").val()
+        let to_date = $("#to_date").val()
+        if(from_date == "" || to_date == "") 
+            alert("Information incomplete!")
+        else {
+
+            $("#loader").html('<img src="/static/images/loader.gif">');
+            
+            $.ajax({
+                url: '/search_date_wise_expense',
+                type: "GET",
+                dataType: "json",
+                data:{
+                    category:category, from_date: from_date, to_date:to_date
+                },
+                success: function(data) {
+                    console.log(data)
+
+                    show_category_information(data.category_data, data.category_wise_bar, from_date, to_date)
+                    show_date_information(data.date_data, data.date_wise_bar, from_date, to_date)
+
+                    $("#loader").empty();
+                }
+            })
+        }
+    }
+
+    function show_category_information(main_data, category_wise_bar, from_date, to_date) {
+        let category_wise_bar_trace = category_wise_bar.trace
+        let category_wise_bar_traceLayout = category_wise_bar.traceLayout
+
+        $("#CategoryWiseChart").html(`
+            <div class="col-xl-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h4 class="card-title">Category Wise Expense Report</h4>
+                    </div>
+                    <div class="card-body">
+                        <div id="CategoryChart"></div>
+                    </div>
+                </div>
+            </div>`);
+        Plotly.newPlot('CategoryChart', [category_wise_bar_trace], category_wise_bar_traceLayout, {showSendToCloud: true, responsive: true});
+
+        // CATEGORY TABLE
+        var table_data = `
+            <div class="col-xl-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h4 class="card-title">Category Wise Expense Report</h4>
+                        <a
+                            class="text-primary"
+                            type="button"
+                            download="Category_wise_expense_${from_date}_${to_date}"
+                            onClick="return ExcellentExport.excel(this, 'cat_table', 'Sheet Name Here');"
+                        >Export to Excel</a>
+                    </div>
+                    <div class="card-body">
+                        <div class="all-country table-responsive">
+                            <table id="cat_table" class="table table-striped table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>SL</th>
+                                        <th>Category</th>
+                                        <th>Expense</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+        `; 
+        if(main_data.length > 0) {
+            var category_sum = 0
+            for(i=0; i<main_data.length;i++){
+                category_sum += main_data[i].expense
+                table_data += `
+                    <tr role="row">
+                        <td>${i+1}</td>
+                        <td>${main_data[i].category}</td>
+                        <td>${main_data[i].expense}</td>
+                    </tr>
+                `
+            }
+        }
+        table_data += `
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th class="text-right" colspan="2">Total</th>
+                                    <th class="text-primary">${number_format(category_sum)}</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        `;
+        $("#CategoryWisetable").html(table_data);
+        // CATEGORY TABLE END
+    }
+    function show_date_information(main_data, date_wise_bar, from_date, to_date) {
+        let date_wise_bar_trace = date_wise_bar.trace
+        let date_wise_bar_traceLayout = date_wise_bar.traceLayout
+
+        $("#DateWiseChart").html(`
+        <div class="col-xl-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title">Date Wise Expense Report</h4>
+                </div>
+                <div class="card-body">
+                    <div id="DateChart"></div>
+                </div>
+            </div>
+        </div>`);
+        Plotly.newPlot('DateChart', [date_wise_bar_trace], date_wise_bar_traceLayout, {showSendToCloud: true, responsive: true});
+
+        // DATA TABLE
+        var table_data = `
+            <div class="col-xl-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h4 class="card-title">Date Wise Expense Report</h4>
+                        <a
+                            class="text-primary"
+                            type="button"
+                            download="Date_wise_expense_${from_date}_${to_date}"
+                            onClick="return ExcellentExport.excel(this, 'date_table', 'Sheet Name Here');"
+                        >Export to Excel</a>
+                    </div>
+                    <div class="card-body">
+                        <div class="all-country table-responsive">
+                            <table id="date_table" class="table table-striped table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th>SL</th>
+                                        <th>Date</th>
+                                        <th>Time</th>
+                                        <th>Remark</th>
+                                        <th>Category</th>
+                                        <th>Expense</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+        `;                        
+        if(main_data.length > 0) {
+            var expense_sum = 0
+            for(i=0; i<main_data.length;i++){
+                expense_sum += main_data[i].expense
+                table_data += `
+                    <tr role="row">
+                        <td>${i+1}</td>
+                        <td>${main_data[i].Date}</td>
+                        <td>${main_data[i].time}</td>
+                        <td>${main_data[i].remark}</td>
+                        <td>${main_data[i].category}</td>
+                        <td>${main_data[i].expense}</td>
+                    </tr>
+                `
+            }
+        }
+        table_data += `
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th class="text-right" colspan="5">Total</th>
+                                    <th class="text-primary">${number_format(expense_sum)}</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        `;
+        $("#DateWisetable").html(table_data);
+        // DATA TABLE END
+    }
+    
+    function number_format(n, c, d, t) {
+        var c = isNaN(c = Math.abs(c)) ? 2 : c,
+            d = d == undefined ? "" : d,
+            t = t == undefined ? "," : t,
+            s = n < 0 ? "-" : "",
+            i = String(parseInt(n = Math.abs(Number(n) || 0).toFixed(c))),
+            j = (j = i.length) > 3 ? j % 3 : 0;
+
+        return s + (j ? i.substr(0, j) + t : "") + i.substr(j).replace(/(\d{3})(?=\d)/g, "$1" + t) + (c ? d + Math.abs(n - i).toFixed(c).slice(4) : "");
+    }
+    $(document).ready(function() {
+        $('.combo').select2();
+    });
+</script>

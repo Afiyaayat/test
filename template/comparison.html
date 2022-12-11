@@ -1,0 +1,256 @@
+{% load static %}
+{%  include 'header.html' %}
+<style type="text/css">
+    .table-bordered thead th, .table-bordered thead td {
+        vertical-align: middle;
+        border: 1px solid #eee !important;
+    }
+</style>
+<div class="content-body">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-xl-4 col-md-4">
+                <div class="mb-3" id="loader" style="min-height: 25px;"></div>
+            </div>
+            <div class="col-xl-3 col-sm-4 col-md-3">
+                <div class="mb-3">
+                    <select id="category" class="form-control combo">
+                        <option value="ALL">ALL</option>
+                        {% for result in category_data %}
+                        <option value="{{result.category}}">{{result.category}}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+            <div class="col-xl-2 col-sm-4 col-md-2">
+                <div class="mb-3">
+                    <input
+                        type="month"
+                        class="form-control"
+                        id="from_date"
+                        value="{{ previousMonth }}"
+                        required
+                    >
+                </div>
+            </div>
+            <div class="col-xl-2 col-sm-4 col-md-2">
+                <div class="mb-3">
+                    <input
+                        type="month"
+                        class="form-control"
+                        id="to_date"
+                        value="{% now 'Y-m' %}"
+                        required
+                    >
+                </div>
+            </div>
+            <div class="col-xl-1 col-sm-1 col-md-1">
+                <div class="mb-3">
+                    <button
+                        type="button"
+                        class="form-control"
+                        onclick="return search_month_wise_expense()"
+                        value=""
+                        required
+                    >
+                        <i class="fa fa-search"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div id="budgetChart" class="col-md-6"></div>
+            <div id="budgetChartScatter" class="col-md-6"></div>
+        </div>
+        <div class="row">
+            <div id="expenseChart" class="col-md-6"></div>
+            <div id="expenseChartScatter" class="col-md-6"></div>
+        </div>
+        <div class="row" id="comparisonTable"></div>
+    </div>
+</div>
+{%  include 'footer.html' %}
+<script type="text/javascript">
+    // page load first time
+    search_month_wise_expense()
+    
+    function search_month_wise_expense() {
+        let category = $("#category").val()
+        let from_date = $("#from_date").val()
+        let to_date = $("#to_date").val()
+        let date = "-01"
+        if(from_date == "" || to_date == "") 
+            alert("Information incomplete!")
+        else {
+
+            $("#loader").html('<img src="/static/images/loader.gif">');
+            
+            $.ajax({
+                url: '/search_expense',
+                type: "GET",
+                dataType: "json",
+                data:{
+                    category:category, from_date: from_date+date, to_date:to_date+date
+                },
+                success: function(data) {
+                    console.log(data)
+
+                    show_budget_graph(data.budget_bar, data.budget_scatter, data.fromMonthYear, data.toMonthYear)
+                    show_expense_graph(data.expense_bar, data.expense_scatter, data.fromMonthYear, data.toMonthYear)
+                    show_table(data.main_data, data.fromMonthYear, data.toMonthYear)
+
+                    $("#loader").empty();
+                }
+            })
+        }
+    }
+    function show_table(main_data, fromMonthYear, toMonthYear) {
+        var table_data = `
+            <div class="col-xl-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h4 class="card-title">Report Between ${fromMonthYear} And ${toMonthYear}</h4>
+                        <a
+                            class="text-primary"
+                            type="button"
+                            download="expense_comparison_${fromMonthYear}_${toMonthYear}"
+                            onClick="return ExcellentExport.excel(this, 'cat_table', 'Sheet Name Here');"
+                        >Export to Excel</a>
+                    </div>
+                    <div class="card-body">
+                        <div class="all-country table-responsive">
+                            <table id="cat_table" class="table table-striped table-bordered">
+                                <thead>
+                                    <tr>
+                                        <th rowspan="2">SL</th>
+                                        <th rowspan="2">Category</th>
+                                        <th colspan="2" class="text-center">${fromMonthYear}</th>
+                                        <th colspan="2" class="text-center">${toMonthYear}</th>
+                                    </tr>
+                                    <tr>
+                                        <th class="text-center">Budget</th>                                        
+                                        <th class="text-center">Expense</th>
+                                        <th class="text-center">Budget</th>                                        
+                                        <th class="text-center">Expense</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+        `; 
+        if(main_data.length > 0) {
+            var expense_sum_x = budget_sum_x = expense_sum_y = budget_sum_y = 0
+            for(i=0; i<main_data.length;i++){
+                expense_sum_x += main_data[i].expense_x
+                budget_sum_x += main_data[i].budget_x
+
+                expense_sum_y += main_data[i].expense_y
+                budget_sum_y += main_data[i].budget_y
+                
+                table_data += `
+                    <tr role="row">
+                        <td>${i+1}</td>
+                        <td>${main_data[i].category}</td>
+                        <td class="text-center">${main_data[i].budget_x}</td>
+                        <td class="text-danger text-center">${main_data[i].expense_x}</td>
+                        <td class="text-center">${main_data[i].budget_y}</td>
+                        <td class="text-danger text-center">${main_data[i].expense_y}</td>
+                    </tr>
+                `
+            }
+        }
+        table_data += `
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th class="text-right" colspan="2">Total</th>
+                                    <th class="text-center">${number_format(budget_sum_x)}</th>
+                                    <th class="text-danger text-center">${number_format(expense_sum_x)}</th>
+                                    <th class="text-center">${number_format(budget_sum_y)}</th>
+                                    <th class="text-danger text-center">${number_format(expense_sum_y)}</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        `;
+        $("#comparisonTable").html(table_data);
+    }
+
+    function show_budget_graph(budget_bar, budget_scatter, fromMonthYear, toMonthYear) {
+        // Bar
+        let budget_bar_trace = budget_bar.trace
+        let budget_bar_trace2 = budget_bar.trace2
+        let budget_bar_traceLayout = budget_bar.traceLayout
+        $("#budgetChart").html(`
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title">Budget Between ${fromMonthYear} And ${toMonthYear}</h4>
+                </div>
+                <div class="card-body">
+                    <div id="CategoryChart"></div>
+                </div>
+            </div>`);
+        Plotly.newPlot('CategoryChart', [budget_bar_trace, budget_bar_trace2], budget_bar_traceLayout, {showSendToCloud: true, responsive: true});
+
+        // Scatter
+        let budget_scatter_trace = budget_scatter.trace
+        let budget_scatter_trace2 = budget_scatter.trace2
+        let budget_scatter_traceLayout = budget_scatter.traceLayout
+        $("#budgetChartScatter").html(`
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title">Budget Between ${fromMonthYear} And ${toMonthYear}</h4>
+                </div>
+                <div class="card-body">
+                    <div id="CategoryChartScatter"></div>
+                </div>
+            </div>`);
+        Plotly.newPlot('CategoryChartScatter', [budget_scatter_trace, budget_scatter_trace2], budget_scatter_traceLayout, {showSendToCloud: true, responsive: true});
+    }
+    function show_expense_graph(expense_bar, expense_scatter, fromMonthYear, toMonthYear) {
+        // Bar
+        let expense_bar_trace = expense_bar.trace
+        let expense_bar_trace2 = expense_bar.trace2
+        let expense_bar_traceLayout = expense_bar.traceLayout
+        $("#expenseChart").html(`
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title">Expense Between ${fromMonthYear} And ${toMonthYear}</h4>
+                </div>
+                <div class="card-body">
+                    <div id="expenseBar"></div>
+                </div>
+            </div>`);
+        Plotly.newPlot('expenseBar', [expense_bar_trace, expense_bar_trace2], expense_bar_traceLayout, {showSendToCloud: true, responsive: true});
+
+        // Scatter
+        let expense_scatter_trace = expense_scatter.trace
+        let expense_scatter_trace2 = expense_scatter.trace2
+        let expense_scatter_traceLayout = expense_scatter.traceLayout
+        $("#expenseChartScatter").html(`
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="card-title">Expense Between ${fromMonthYear} And ${toMonthYear}</h4>
+                </div>
+                <div class="card-body">
+                    <div id="expenseScatter"></div>
+                </div>
+            </div>`);
+        Plotly.newPlot('expenseScatter', [expense_scatter_trace, expense_scatter_trace2], expense_scatter_traceLayout, {showSendToCloud: true, responsive: true});
+    }
+    function number_format(n, c, d, t) {
+        var c = isNaN(c = Math.abs(c)) ? 2 : c,
+            d = d == undefined ? "" : d,
+            t = t == undefined ? "," : t,
+            s = n < 0 ? "-" : "",
+            i = String(parseInt(n = Math.abs(Number(n) || 0).toFixed(c))),
+            j = (j = i.length) > 3 ? j % 3 : 0;
+
+        return s + (j ? i.substr(0, j) + t : "") + i.substr(j).replace(/(\d{3})(?=\d)/g, "$1" + t) + (c ? d + Math.abs(n - i).toFixed(c).slice(4) : "");
+    }
+    $(document).ready(function() {
+        $('.combo').select2();
+    });
+</script>
